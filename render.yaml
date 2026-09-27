@@ -1,0 +1,26 @@
+# Render Blueprint for the API. In Render: New > Blueprint > pick this repo.
+# Fields marked sync: false are typed in during setup (they are secrets).
+services:
+  - type: web
+    name: lokesh-portfolio-api
+    runtime: node
+    plan: free
+    rootDir: server
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: MONGODB_URI
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 2h
+      - key: ADMIN_EMAIL
+        value: lokesh.s0926@gmail.com
+      - key: ADMIN_PASSWORD_HASH
+        sync: false # paste the output of `npm run hash-password` (no quotes here)
+      - key: CLIENT_ORIGIN
+        sync: false # your Netlify URL, e.g. https://lokesh-m.netlify.app
