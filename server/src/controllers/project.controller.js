@@ -24,7 +24,7 @@ async function assertUniqueName(name, excludeId) {
 // Public: only visible projects
 export async function listPublic(_req, res) {
   const projects = await Project.find({ visible: true }).sort(SORT)
-  res.set('Cache-Control', 'public, max-age=60')
+  res.set('Cache-Control', 'no-cache, must-revalidate')
   res.json(projects)
 }
 

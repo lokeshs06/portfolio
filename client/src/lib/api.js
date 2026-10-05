@@ -73,13 +73,26 @@ export function writeJSON(store, key, value) {
 }
 
 export const storage = { local, session }
+export const PROJECTS_CACHE_KEY = 'portfolio-projects-cache'
+export const SYNC_KEY = 'portfolio:last-updated'
+
+export function notifyProjectsChanged() {
+  writeJSON(local, PROJECTS_CACHE_KEY, undefined)
+  try {
+    local?.setItem(SYNC_KEY, String(Date.now()))
+  } catch {
+    /* storage blocked */
+  }
+  window.dispatchEvent(new Event('portfolio:projects-changed'))
+}
 
 // ---------- real API ----------
-async function request(path, { method = 'GET', body, token } = {}) {
+async function request(path, { method = 'GET', body, token, cache } = {}) {
   let res
   try {
     res = await fetch(`${API_URL}${path}`, {
       method,
+      cache,
       headers: {
         ...(body ? { 'Content-Type': 'application/json' } : {}),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -95,11 +108,11 @@ async function request(path, { method = 'GET', body, token } = {}) {
 }
 
 // ---------- demo store ----------
-const DEMO_KEY = 'portfolio-demo-projects'
+export const DEMO_KEY = 'portfolio-demo-projects'
 const wait = (ms = 250) => new Promise((r) => setTimeout(r, ms))
 let memoryStore = null
 
-function demoRead() {
+export function demoRead() {
   const saved = readJSON(local, DEMO_KEY, null)
   if (saved) return saved
   if (!memoryStore) memoryStore = fallback.map((p) => ({ ...p }))
@@ -108,7 +121,7 @@ function demoRead() {
 function demoWrite(list) {
   memoryStore = list
   writeJSON(local, DEMO_KEY, list)
-  window.dispatchEvent(new Event('portfolio:projects-changed'))
+  notifyProjectsChanged()
 }
 
 const URL_RE = /^https?:\/\/[^\s]+\.[^\s]+$/i
@@ -129,7 +142,7 @@ function demoValidate(p, partial = false, id = null) {
 // ---------- public functions ----------
 export async function getPublicProjects() {
   if (isDemo) return sortProjects(demoRead().filter((p) => p.visible))
-  return (await request('/api/projects')).map(normalize)
+  return (await request('/api/projects', { cache: 'no-cache' })).map(normalize)
 }
 
 export async function login(email, password) {
@@ -147,7 +160,7 @@ export async function getAllProjects(token) {
     await wait(150)
     return sortProjects(demoRead())
   }
-  return (await request('/api/admin/projects', { token })).map(normalize)
+  return (await request('/api/admin/projects', { token, cache: 'no-cache' })).map(normalize)
 }
 
 export async function createProject(token, data) {
@@ -159,7 +172,9 @@ export async function createProject(token, data) {
     demoWrite([...list, created])
     return created
   }
-  return normalize(await request('/api/admin/projects', { method: 'POST', body: data, token }))
+  const created = normalize(await request('/api/admin/projects', { method: 'POST', body: data, token }))
+  notifyProjectsChanged()
+  return created
 }
 
 export async function updateProject(token, id, patch) {
@@ -171,7 +186,9 @@ export async function updateProject(token, id, patch) {
     demoWrite(next)
     return next.find((p) => p.id === id)
   }
-  return normalize(await request(`/api/admin/projects/${id}`, { method: 'PATCH', body: patch, token }))
+  const updated = normalize(await request(`/api/admin/projects/${id}`, { method: 'PATCH', body: patch, token }))
+  notifyProjectsChanged()
+  return updated
 }
 
 export async function deleteProject(token, id) {
@@ -180,7 +197,9 @@ export async function deleteProject(token, id) {
     demoWrite(demoRead().filter((p) => p.id !== id))
     return { id, deleted: true }
   }
-  return request(`/api/admin/projects/${id}`, { method: 'DELETE', token })
+  const result = await request(`/api/admin/projects/${id}`, { method: 'DELETE', token })
+  notifyProjectsChanged()
+  return result
 }
 
 export async function reorderProjects(token, ids) {
@@ -191,11 +210,13 @@ export async function reorderProjects(token, ids) {
     demoWrite(next)
     return sortProjects(next)
   }
-  return (await request('/api/admin/projects/order', { method: 'PUT', body: { ids }, token })).map(normalize)
+  const result = (await request('/api/admin/projects/order', { method: 'PUT', body: { ids }, token })).map(normalize)
+  notifyProjectsChanged()
+  return result
 }
 
 export function resetDemo() {
   memoryStore = null
   writeJSON(local, DEMO_KEY, undefined)
-  window.dispatchEvent(new Event('portfolio:projects-changed'))
+  notifyProjectsChanged()
 }
